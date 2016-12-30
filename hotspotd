@@ -25,7 +25,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A small daemon to create a wifi hotspot on linux')
     parser.add_argument('-v', '--verbose', required=False, action='store_true')
     parser.add_argument('command', choices=['start', 'stop', 'configure'])
-    parser.add_argument('-h', "--hotspotd", required=False, default='hotspotd.json')
+    parser.add_argument('-hc', "--hotspotd", required=False, default='hotspotd.json')
     parser.add_argument('-rc', "--run_conf", required=False, default='run.conf')
     parser.add_argument('-rd', "--run_dat", required=False, default='run.dat')
     args = parser.parse_args()
