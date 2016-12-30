@@ -3,10 +3,12 @@
 #@description: Small daemon to create a wifi hotspot on linux
 #@license: MIT
 #python -m hotspotd $*
+from __future__ import print_function
+from __future__ import absolute_import
 try:
 	import hotspotd.main as mainmod
 except ImportError:
-	import main as mainmod
+	from . import main as mainmod
 import sys
 import os
 import argparse
@@ -17,7 +19,7 @@ if __name__ == "__main__":
 	#if os.getenv('USER') != 'root':
 	if os.getenv('HOME') != '/root':
 		if os.getenv('SUDO_USER') is None:
-			print "You need root permissions to do this, sloth!"
+			print("You need root permissions to do this, sloth!")
 			sys.exit(1)
 
 	parser = argparse.ArgumentParser(description='A small daemon to create a wifi hotspot on linux')
