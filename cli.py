@@ -40,7 +40,7 @@ def execute(command='', errorstring='', wait=True, shellexec=False, ags=None):
         if wait:
             p.wait()
             result=get_stdout(p)
-            return result
+            return result.decode()
         else:
             if arguments.verbose: print('not waiting')
             return p
@@ -48,7 +48,7 @@ def execute(command='', errorstring='', wait=True, shellexec=False, ags=None):
         print('error occured:' + errorstring)
         return errorstring
     except Exception as ea:
-        print('Exception occured:' + ea.message)
+        print('Exception occured:' + str(ea))
         return errorstring
         #show_message("Error occured: " + ea.message)
 
