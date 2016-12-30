@@ -1,5 +1,5 @@
 #Fork
-Some experiments to try to get this code python3 compatible.
+Some experiments to get this code python3 compatible.
 
 #Introduction
 *Hotspotd* is a small daemon to create a wifi hotspot on linux. It depends on *hostapd* for AP provisioning and *dnsmasq* to assign IP addresses to devices.
