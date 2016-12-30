@@ -324,14 +324,14 @@ def main(args):
     cli.arguments = args  # initialize
 
     newconfig = False
-    if not os.path.exists(args.config):
-        configure()
+    if not os.path.exists(args.hotspotd):
+        configure(args.hotspotd, args.run_conf, args.run_dat)
         newconfig = True
     if len(cli.check_sysfile('hostapd')) == 0:
         print(
             "hostapd is not installed on your system. This package will not work without it.\nTo install hostapd, run 'sudo apt-get install hostapd'\nor refer to http://wireless.kernel.org/en/users/Documentation/hostapd after this installation gets over.")
         time.sleep(2)
-    dc = json.load(open(args.config))
+    dc = json.load(open(args.hotspotd))
     wlan = dc['wlan']
     ppp = dc['inet']
     IP = dc['ip']
