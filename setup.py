@@ -72,6 +72,8 @@ s = setup(name='hotspotd',
           packages=['hotspotd'],
           package_dir={'hotspotd': ''},
           package_data={'hotspotd': ['run.dat']},
-          scripts=['hotspotd']
-          # data_files=[('config',['run.dat'])],
-          )
+          scripts=['hotspotd'],
+          install_requires=[
+              'wireless',
+              'netifaces'
+          ],)

@@ -16,7 +16,51 @@ import socket
 import platform
 import datetime
 import time
+from wireless import Wireless
+import netifaces
 
+config = '''
+#sets the wifi interface to use, is wlan0 in most cases
+interface=wlan0
+#driver to use, nl80211 works in most cases
+driver=nl80211
+#sets the ssid of the virtual wifi access point
+ssid={0}
+#sets the mode of wifi, depends upon the devices you will be using. It can be a,b,g,n. Setting to g ensures backward compatiblity.
+hw_mode=g
+#sets the channel for your wifi
+channel=6
+#macaddr_acl sets options for mac address filtering. 0 means "accept unless in deny list"
+macaddr_acl=0
+#setting ignore_broadcast_ssid to 1 will disable the broadcasting of ssid
+ignore_broadcast_ssid=0
+#Sets authentication algorithm
+#1 - only open system authentication
+#2 - both open system authentication and shared key authentication
+auth_algs=1
+#####Sets WPA and WPA2 authentication#####
+#wpa option sets which wpa implementation to use
+#1 - wpa only
+#2 - wpa2 only
+#3 - both
+wpa=3
+#sets wpa passphrase required by the clients to authenticate themselves on the network
+wpa_passphrase={1}
+#sets wpa key management
+wpa_key_mgmt=WPA-PSK
+#sets encryption used by WPA
+wpa_pairwise=TKIP
+#sets encryption used by WPA2
+rsn_pairwise=CCMP
+#################################
+#####Sets WEP authentication#####
+#WEP is not recommended as it can be easily broken into
+#wep_default_key=0
+#wep_key0=qwert    #5,13, or 16 characters
+#optionally you may also define wep_key2, wep_key3, and wep_key4
+#################################
+#For No encryption, you don't need to set any options
+'''
 
 class Proto(object):
     pass
@@ -42,57 +86,59 @@ def validate_ip(addr):
         return False  # Not legal
 
 
-def configure(hotspotd_config, run_dat, run_conf):
-    global wlan, ppp, IP, Netmask
+def configure(hotspotd_config, run_conf):
+    global wlan, ppp, IP, netmask
     # CHECK WHETHER WIFI IS SUPPORTED OR NOT
     print('Verifying connections')
     wlan = ''
     ppp = ''
-    s = cli.execute_shell('iwconfig')
-    if s != None:
-        lines = s.splitlines()
-        # print 'and it is:'  + s
-        for line in lines:
-            if not line.startswith(' ') and not line.startswith('mon.') and 'IEEE 802.11' in line:
-                wlan = line.split(' ')[0]
-                print('Wifi interface found: ' + wlan)
 
-    if wlan == '':
+    wireless = Wireless()
+    wireless_interfaces = wireless.interfaces()
+    if not len(wireless_interfaces):
         print('Wireless interface could not be found on your device.')
-        return
-
-    # print 'Verifying Internet connections'
-    s = cli.execute_shell('ifconfig')
-    lines = s.splitlines()
-    iface = []
-    for line in lines:
-        if not line.startswith(' ') and not line.startswith(wlan) and not line.startswith('lo') and not line.startswith(
-                'mon.') and len(line) > 0:
-            iface.append(line.split(' ')[0])
-            # print 'f::' + line
-
-    if len(iface) == 0:
-        print('No network nic could be found on your deivce to interface with the LAN')
-    elif len(iface) == 1:
-        ppp = iface[0]
-        print('Network interface found: ' + ppp)
-    else:
-        rniface = list(range(len(iface)))
-        s = ''
+        return False
+    elif len(wireless_interfaces) > 1:
         while True:
-            for i in rniface:
-                print(i, iface[i])
+            print("Choose interface: ")
+            for i in range(0, len(wireless_interfaces)):
+                print("{}: {}".format(str(i), wireless_interfaces[i]))
             try:
-                s = int(eval(input("Enter number for internet supplying NIC :")))
+                wireless_interface_number = int(eval(input("Enter number: ")))
             except:
                 continue
-            if s not in rniface:
+            if wireless_interface_number >= len(wireless_interfaces):
                 continue
-            ppp = iface[s]
+            wlan = wireless_interfaces[wireless_interface_number]
             break
+    else:
+        wlan = wireless_interfaces[0]
+        print('Wlan interface found: {}'.format(wlan))
+
+    remaining_interfaces = netifaces.interfaces()
+    remaining_interfaces.remove(wlan)
+    if not len(remaining_interfaces):
+        print('No network nic could be found on your deivce to interface with the LAN')
+        return False
+    elif len(remaining_interfaces) > 1:
+        while True:
+            print("Choose interface: ")
+            for i in range(0, len(remaining_interfaces)):
+                print("{}: {}".format(str(i), remaining_interfaces[i]))
+            try:
+                remaining_interface_number = int(eval(input("Enter number: ")))
+            except:
+                continue
+            if remaining_interface_number >= len(remaining_interfaces):
+                continue
+            ppp = remaining_interfaces[remaining_interface_number]
+            break
+    else:
+        wlan = wireless_interfaces[0]
+        print('Network interface found: {}'.format(ppp))
 
     while True:
-        IP = input('Enter an IP address for your ap [192.168.45.1] :')
+        IP = input('Enter an IP address for your ap [192.168.45.1]:')
         # except: continue
         # print type(IP)
         # sys.exit(0)
@@ -101,32 +147,32 @@ def configure(hotspotd_config, run_dat, run_conf):
         if not validate_ip(IP): continue
         break
 
-    Netmask = '255.255.255.0'
+    netmask = '255.255.255.0'
 
     # CONFIGURE SSID, PASSWORD, ETC.
-    SSID = input('Enter SSID [joe_ssid] :')
-    if SSID == '': SSID = 'joe_ssid'
-    password = input('Enter 10 digit password [1234567890] :')
-    if password == '': password = '1234567890'
+    SSID = input('Enter SSID [joe_ssid]:')
+    if SSID == '':
+        SSID = 'joe_ssid'
 
-    f = open(run_dat, 'r')
-    lout = []
-    for line in f.readlines():
-        lout.append(line.replace('<SSID>', SSID).replace('<PASS>', password))
+    password = input('Enter 10 digit password [1234567890]:')
+    if password == '':
+        password = '1234567890'
 
-    f.close()
-    f = open(run_conf, 'w')
-    f.writelines(lout)
-    f.close()
+    with open(run_conf, 'w') as run_conf_file:
+        run_conf_file.write(config.format(SSID, password))
 
-    print('created hostapd configuration: run.conf')
+    print('created hostapd configuration: {}'.format(run_conf))
 
-    dc = {'wlan': wlan, 'inet': ppp, 'ip': IP, 'netmask': Netmask, 'SSID': SSID, 'password': password}
-    json.dump(dc, open(hotspotd_config, 'wb'))
+    dc = {'wlan': wlan, 'inet': ppp, 'ip': IP, 'netmask': netmask, 'SSID': SSID, 'password': password}
+    with open(hotspotd_config, 'w') as hotspotd_config_file:
+        json.dump(dc, hotspotd_config_file)
+
     print(dc)
     print('Configuration saved. Run "hotspotd start" to start the router.')
 
     # CHECK WIFI DRIVERS AND ISSUE WARNINGS
+
+    return True
 
 
 def check_dependencies():
@@ -185,13 +231,13 @@ def pre_start():
         pass
 
 
-def start_router():
+def start_router(run_conf):
     if not check_dependencies():
         return
     elif not check_interfaces():
         return
     pre_start()
-    s = 'ifconfig ' + wlan + ' up ' + IP + ' netmask ' + Netmask
+    s = 'ifconfig ' + wlan + ' up ' + IP + ' netmask ' + netmask
     print('created interface: mon.' + wlan + ' on IP: ' + IP)
     r = cli.execute_shell(s)
     cli.writelog(r)
@@ -235,7 +281,7 @@ def start_router():
     cli.execute_shell('iptables -A INPUT --in-interface ' + wlan + ' -j ACCEPT')
 
     # start dnsmasq
-    s = 'dnsmasq --dhcp-authoritative --interface=' + wlan + ' --dhcp-range=' + ipparts + '.20,' + ipparts + '.100,' + Netmask + ',4h'
+    s = 'dnsmasq --dhcp-authoritative --interface=' + wlan + ' --dhcp-range=' + ipparts + '.20,' + ipparts + '.100,' + netmask + ',4h'
     print('running dnsmasq')
     print(s)
     r = cli.execute_shell(s)
@@ -254,7 +300,7 @@ def start_router():
     # writelog('created: ' + os.getcwd() + '/hostapd.conf')
     # start hostapd
     # s = 'hostapd -B ' + os.path.abspath('run.conf')
-    s = 'hostapd -B ' + os.getcwd() + '/run.conf'
+    s = 'hostapd -B {}'.format(run_conf)
     print(s)
     cli.writelog('running hostapd')
     # cli.writelog('sleeping for 2 seconds.')
@@ -303,7 +349,7 @@ def stop_router():
 
 
 def main(args):
-    global wlan, ppp, IP, Netmask
+    global wlan, ppp, IP, netmask
     the_version = open("VERSION").read().strip()
     print("****")
     print("Hotspotd " + the_version)
@@ -325,26 +371,36 @@ def main(args):
 
     newconfig = False
     if not os.path.exists(args.hotspotd):
-        configure(args.hotspotd, args.run_conf, args.run_dat)
+        if not configure(args.hotspotd, args.run_conf):
+            return
         newconfig = True
     if len(cli.check_sysfile('hostapd')) == 0:
         print(
             "hostapd is not installed on your system. This package will not work without it.\nTo install hostapd, run 'sudo apt-get install hostapd'\nor refer to http://wireless.kernel.org/en/users/Documentation/hostapd after this installation gets over.")
         time.sleep(2)
-    dc = json.load(open(args.hotspotd))
-    wlan = dc['wlan']
-    ppp = dc['inet']
-    IP = dc['ip']
-    Netmask = dc['netmask']
-    SSID = dc['SSID']
-    password = dc['password']
+    try:
+        with open(args.hotspotd) as hotspotd_file:
+            dc = json.load(hotspotd_file)
+        wlan = dc['wlan']
+        ppp = dc['inet']
+        IP = dc['ip']
+        netmask = dc['netmask']
+        SSID = dc['SSID']
+        password = dc['password']
+    except:
+        print("Error loadind {}".format(args.hotspotd))
+        if not configure(args.hotspotd, args.run_conf):
+            return
+        newconfig = True
 
     if args.command == 'configure':
-        if not newconfig: configure(args.hotspotd, args.run_conf, args.run_dat)
+        if not newconfig:
+            if not configure(args.hotspotd, args.run_conf):
+                return
     elif args.command == 'stop':
         stop_router()
     elif args.command == 'start':
         if (cli.is_process_running('hostapd') != 0 and cli.is_process_running('dnsmasq') != 0):
             print('hotspot is already running.')
         else:
-            start_router()
+            start_router(args.run_conf)
