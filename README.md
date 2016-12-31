@@ -25,11 +25,11 @@ To uninstall hotspotd, just say:
 
 To install hostapd on ubuntu:
 
-```apt-get install hostapd```
+```apt-get install hostapd dnsmasq```
 
 Or on RHEL based distros:
 
-```yum install hostapd```
+```yum install hostapd dnsmasq```
 
 #Usage
 
