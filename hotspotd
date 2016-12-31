@@ -15,18 +15,24 @@ import os
 import argparse
 
 if __name__ == "__main__":
-    # check root or not
-    # if os.getenv('USER') != 'root':
-    if os.getenv('HOME') != '/root':
-        if os.getenv('SUDO_USER') is None:
-            print("You need root permissions to do this, sloth!")
-            sys.exit(1)
+    if os.geteuid() != 0:
+        print("You need root permissions to do this, sloth!")
+        sys.exit(1)
 
     parser = argparse.ArgumentParser(description='A small daemon to create a wifi hotspot on linux')
     parser.add_argument('-v', '--verbose', required=False, action='store_true')
     parser.add_argument('command', choices=['start', 'stop', 'configure'])
-    parser.add_argument('-hc', "--hotspotd", required=False, default='hotspotd.json')
-    parser.add_argument('-rc', "--run_conf", required=False, default='run.conf')
+    parser.add_argument('-hc', "--hotspotd", required=False, default='/etc/hotspotd/hotspotd.json')
+    parser.add_argument('-rc', "--run_conf", required=False, default='/etc/hotspotd/run.conf')
     args = parser.parse_args()
+
+    hotspot_directory = os.path.dirname(args.hotspotd)
+    if not os.path.exists(hotspot_directory):
+        os.makedirs(hotspot_directory)
+
+    run_conf_derectory = os.path.dirname(args.run_conf)
+    if not os.path.exists(run_conf_derectory):
+        os.makedirs(run_conf_derectory)
+
     # hotspotd.main.main(args)
     mainmod.main(args)

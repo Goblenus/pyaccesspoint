@@ -18,6 +18,7 @@ import datetime
 import time
 from wireless import Wireless
 import netifaces
+import shutil
 
 config = '''
 #sets the wifi interface to use, is wlan0 in most cases
@@ -104,7 +105,7 @@ def configure(hotspotd_config, run_conf):
             for i in range(0, len(wireless_interfaces)):
                 print("{}: {}".format(str(i), wireless_interfaces[i]))
             try:
-                wireless_interface_number = int(eval(input("Enter number: ")))
+                wireless_interface_number = int((input("Enter number: ")))
             except:
                 continue
             if wireless_interface_number >= len(wireless_interfaces):
@@ -125,8 +126,13 @@ def configure(hotspotd_config, run_conf):
             print("Choose interface: ")
             for i in range(0, len(remaining_interfaces)):
                 print("{}: {}".format(str(i), remaining_interfaces[i]))
+            print("X: do not use forwarding")
             try:
-                remaining_interface_number = int(eval(input("Enter number: ")))
+                remaining_interface_number = input("Enter number: ")
+                if remaining_interface_number.lower() == "x":
+                    ppp = None
+                    break
+                remaining_interface_number = int(remaining_interface_number)
             except:
                 continue
             if remaining_interface_number >= len(remaining_interfaces):
@@ -176,43 +182,38 @@ def configure(hotspotd_config, run_conf):
 
 
 def check_dependencies():
-    # CHECK FOR DEPENDENCIES
-    if len(cli.check_sysfile('hostapd')) == 0:
+    check = True
+
+    if shutil.which('hostapd') is None:
         print('hostapd executable not found. Make sure you have installed hostapd.')
-        return False
-    elif len(cli.check_sysfile('dnsmasq')) == 0:
+        check = False
+
+    if shutil.which('dnsmasq') is None:
         print('dnsmasq executable not found. Make sure you have installed dnsmasq.')
-        return False
-    else:
-        return True
+        check = False
+
+    return check
 
 
 def check_interfaces():
     global wlan, ppp
     print('Verifying interfaces')
-    s = cli.execute_shell('ifconfig')
-    lines = s.splitlines()
-    bwlan = False
-    bppp = False
 
-    for line in lines:
-        if not line.startswith(' ') and len(line) > 0:
-            text = line.split(' ')[0]
-            if text.startswith(wlan):
-                bwlan = True
-            elif text.startswith(ppp):
-                bppp = True
+    all_interfaces = netifaces.interfaces()
 
-    if not bwlan:
+    check = True
+
+    if wlan not in all_interfaces:
         print(wlan + ' interface was not found. Make sure your wifi is on.')
-        return False
-    elif not bppp:
-        print(ppp + ' interface was not found. Make sure you are connected to the internet.')
-        return False
-    else:
-        print('done.')
-        return True
+        check = False
 
+    if ppp is not None and ppp not in all_interfaces:
+        print(ppp + ' interface was not found. Make sure you are connected to the internet.')
+        check = False
+
+    print('done.')
+
+    return check
 
 def pre_start():
     try:
@@ -262,19 +263,21 @@ def start_router(run_conf):
     r = cli.set_sysctl('net.ipv4.ip_forward', '1')
     print(r.strip())
 
-    # enable forwarding in iptables.
-    print('creating NAT using iptables: ' + wlan + '<->' + ppp)
-    cli.execute_shell('iptables -P FORWARD ACCEPT')
+    if ppp is not None:
+        # enable forwarding in iptables.
+        print('creating NAT using iptables: ' + wlan + '<->' + ppp)
+        cli.execute_shell('iptables -P FORWARD ACCEPT')
 
-    # add iptables rules to create the NAT.
-    cli.execute_shell('iptables --table nat --delete-chain')
-    cli.execute_shell('iptables --table nat -F')
-    r = cli.execute_shell('iptables --table nat -X')
-    if len(r.strip()) > 0: print(r.strip())
-    cli.execute_shell('iptables -t nat -A POSTROUTING -o ' + ppp + ' -j MASQUERADE')
-    cli.execute_shell(
-        'iptables -A FORWARD -i ' + ppp + ' -o ' + wlan + ' -j ACCEPT -m state --state RELATED,ESTABLISHED')
-    cli.execute_shell('iptables -A FORWARD -i ' + wlan + ' -o ' + ppp + ' -j ACCEPT')
+        # add iptables rules to create the NAT.
+        cli.execute_shell('iptables --table nat --delete-chain')
+        cli.execute_shell('iptables --table nat -F')
+        r = cli.execute_shell('iptables --table nat -X')
+        if len(r.strip()) > 0:
+            print(r.strip())
+        cli.execute_shell('iptables -t nat -A POSTROUTING -o ' + ppp + ' -j MASQUERADE')
+        cli.execute_shell(
+            'iptables -A FORWARD -i ' + ppp + ' -o ' + wlan + ' -j ACCEPT -m state --state RELATED,ESTABLISHED')
+        cli.execute_shell('iptables -A FORWARD -i ' + wlan + ' -o ' + ppp + ' -j ACCEPT')
 
     # allow traffic to/from wlan
     cli.execute_shell('iptables -A OUTPUT --out-interface ' + wlan + ' -j ACCEPT')
