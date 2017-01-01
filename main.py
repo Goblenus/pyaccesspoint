@@ -22,7 +22,7 @@ import shutil
 
 config = '''
 #sets the wifi interface to use, is wlan0 in most cases
-interface=wlan0
+interface={2}
 #driver to use, nl80211 works in most cases
 driver=nl80211
 #sets the ssid of the virtual wifi access point
@@ -62,21 +62,6 @@ rsn_pairwise=CCMP
 #################################
 #For No encryption, you don't need to set any options
 '''
-
-class Proto(object):
-    pass
-
-
-const = Proto()
-
-# global const = Proto() #struct to hold startup parameters
-# const.debug = False
-# const.verbose = False
-# const.command = 'start'
-# const.argv = None
-
-stores = Proto()  # struct to dump misc variables
-stores.running = False
 
 
 def validate_ip(addr):
@@ -160,12 +145,12 @@ def configure(hotspotd_config, run_conf):
     if SSID == '':
         SSID = 'joe_ssid'
 
-    password = input('Enter 10 digit password [1234567890]:')
+    password = input('Enter password [1234567890]:')
     if password == '':
         password = '1234567890'
 
     with open(run_conf, 'w') as run_conf_file:
-        run_conf_file.write(config.format(SSID, password))
+        run_conf_file.write(config.format(SSID, password, wlan))
 
     print('created hostapd configuration: {}'.format(run_conf))
 
@@ -319,11 +304,10 @@ def stop_router():
     # bring down the interface
     cli.execute_shell('ifconfig mon.' + wlan + ' down')
 
-    # TODO: Find some workaround. killing hostapd brings down the wlan0 interface in ifconfig.
-    # ~ #stop hostapd
-    # ~ if cli.is_process_running('hostapd')>0:
-    # ~ cli.writelog('stopping hostapd')
-    # ~ cli.execute_shell('pkill hostapd')
+    # stop hostapd
+    if cli.is_process_running('hostapd')>0:
+        cli.writelog('stopping hostapd')
+        cli.execute_shell('pkill hostapd')
 
     # stop dnsmasq
     if cli.is_process_running('dnsmasq') > 0:
@@ -341,6 +325,7 @@ def stop_router():
     cli.execute_shell('iptables --table nat --delete-chain')
     cli.execute_shell('iptables --table nat -F')
     cli.execute_shell('iptables --table nat -X')
+
     # disable forwarding in sysctl.
     cli.writelog('disabling forward in sysctl.')
     r = cli.set_sysctl('net.ipv4.ip_forward', '0')
@@ -361,25 +346,13 @@ def main(args):
     print("Copyright (c) 2014-2016")
     print("Prahlad Yeri<prahladyeri@yahoo.com>\n")
 
-    scpath = os.path.realpath(__file__)
-    realdir = os.path.dirname(scpath)
-    os.chdir(realdir)
-    # print 'changed directory to ' + os.path.dirname(scpath)
-    # if an instance is already running, then quit
-    # const.verbose = args.verbose
-    # const.command = args.command
-    # const.blocking = args.blocking
-    # const.argv = [os.getcwd() + '/server.py'] + sys.argv[1:]
-    cli.arguments = args  # initialize
+    cli.arguments = args
 
-    newconfig = False
-    if not os.path.exists(args.hotspotd):
-        if not configure(args.hotspotd, args.run_conf):
-            return
-        newconfig = True
     if len(cli.check_sysfile('hostapd')) == 0:
-        print(
-            "hostapd is not installed on your system. This package will not work without it.\nTo install hostapd, run 'sudo apt-get install hostapd'\nor refer to http://wireless.kernel.org/en/users/Documentation/hostapd after this installation gets over.")
+        print("hostapd is not installed on your system. This package will not work without it.\n"
+              "To install hostapd, run 'sudo apt-get install hostapd'\n"
+              "or refer to http://wireless.kernel.org/en/users/Documentation/hostapd after this installation "
+              "gets over.")
         time.sleep(2)
     try:
         with open(args.hotspotd) as hotspotd_file:
@@ -394,15 +367,16 @@ def main(args):
         print("Error loadind {}".format(args.hotspotd))
         if not configure(args.hotspotd, args.run_conf):
             return
-        newconfig = True
 
     if args.command == 'configure':
-        if not newconfig:
-            if not configure(args.hotspotd, args.run_conf):
-                return
+        configure(args.hotspotd, args.run_conf)
     elif args.command == 'stop':
         stop_router()
     elif args.command == 'start':
+        if not os.path.exists(args.hotspotd):
+            if not configure(args.hotspotd, args.run_conf):
+                return
+
         if (cli.is_process_running('hostapd') != 0 and cli.is_process_running('dnsmasq') != 0):
             print('hotspot is already running.')
         else:
