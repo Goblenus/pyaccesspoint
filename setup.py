@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-# @author: Prahlad Yeri
-# @description: Small daemon to create a wifi hotspot on linux
-# @license: MIT
 from __future__ import print_function
 import os
 import sys
@@ -75,5 +71,6 @@ s = setup(name='hotspotd',
           scripts=['hotspotd'],
           install_requires=[
               'wireless',
-              'netifaces'
+              'netifaces',
+              'psutil'
           ],)

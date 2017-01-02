@@ -1,24 +1,15 @@
-#!/usr/bin/env python
-# @author: Prahlad Yeri
-# @description: Small daemon to create a wifi hotspot on linux
-# @license: MIT
 from __future__ import print_function
 from __future__ import absolute_import
 from builtins import input
 from builtins import range
-from builtins import object
-import sys
 import os
-import argparse
-from . import cli
 import json
 import socket
-import platform
-import datetime
-import time
 from wireless import Wireless
 import netifaces
 import shutil
+import psutil
+import subprocess
 
 config = '''
 #sets the wifi interface to use, is wlan0 in most cases
@@ -64,320 +55,330 @@ rsn_pairwise=CCMP
 '''
 
 
-def validate_ip(addr):
-    try:
-        socket.inet_aton(addr)
-        return True  # legal
-    except socket.error:
-        return False  # Not legal
+class Hotspotd:
+    def __init__(self, hotspotd_config_path="/etc/hotspotd/hotspotd.json", wlan=None, inet=None, ip=None, netmask=None,
+                 ssid=None, password=None):
+        self.wlan = wlan
+        self.inet = inet
+        self.ip = ip
+        self.netmask = netmask
+        self.ssid = ssid
+        self.password = password
+        self.hotspotd_config_path = hotspotd_config_path
+        self.hostapd_config_path = "/etc/hotspotd/hostapd.config"
 
+        if self.hotspotd_config_path is not None:
+            hotspot_directory = os.path.dirname(self.hotspotd_config_path)
+            if not os.path.exists(hotspot_directory):
+                os.makedirs(hotspot_directory)
 
-def configure(hotspotd_config, run_conf):
-    global wlan, ppp, IP, netmask
-    # CHECK WHETHER WIFI IS SUPPORTED OR NOT
-    print('Verifying connections')
-    wlan = ''
-    ppp = ''
+        hostapd_config_derectory = os.path.dirname(self.hostapd_config_path)
+        if not os.path.exists(hostapd_config_derectory):
+            os.makedirs(hostapd_config_derectory)
 
-    wireless = Wireless()
-    wireless_interfaces = wireless.interfaces()
-    if not len(wireless_interfaces):
-        print('Wireless interface could not be found on your device.')
-        return False
-    elif len(wireless_interfaces) > 1:
-        while True:
-            print("Choose interface: ")
-            for i in range(0, len(wireless_interfaces)):
-                print("{}: {}".format(str(i), wireless_interfaces[i]))
-            try:
-                wireless_interface_number = int((input("Enter number: ")))
-            except:
-                continue
-            if wireless_interface_number >= len(wireless_interfaces):
-                continue
-            wlan = wireless_interfaces[wireless_interface_number]
-            break
-    else:
-        wlan = wireless_interfaces[0]
-        print('Wlan interface found: {}'.format(wlan))
+    def _load_hotspotd_config(self):
+        try:
+            with open(self.hotspotd_config_path) as hotspotd_config_file:
+                dc = json.load(hotspotd_config_file)
 
-    remaining_interfaces = netifaces.interfaces()
-    remaining_interfaces.remove(wlan)
-    if not len(remaining_interfaces):
-        print('No network nic could be found on your deivce to interface with the LAN')
-        return False
-    elif len(remaining_interfaces) > 1:
-        while True:
-            print("Choose interface: ")
-            for i in range(0, len(remaining_interfaces)):
-                print("{}: {}".format(str(i), remaining_interfaces[i]))
-            print("X: do not use forwarding")
-            try:
-                remaining_interface_number = input("Enter number: ")
-                if remaining_interface_number.lower() == "x":
-                    ppp = None
-                    break
-                remaining_interface_number = int(remaining_interface_number)
-            except:
-                continue
-            if remaining_interface_number >= len(remaining_interfaces):
-                continue
-            ppp = remaining_interfaces[remaining_interface_number]
-            break
-    else:
-        wlan = wireless_interfaces[0]
-        print('Network interface found: {}'.format(ppp))
+            self.wlan = dc['wlan']
+            self.inet = dc['inet']
+            self.ip = dc['ip']
+            self.netmask = dc['netmask']
+            self.ssid = dc['ssid']
+            self.password = dc['password']
+        except:
+            return False
 
-    while True:
-        IP = input('Enter an IP address for your ap [192.168.45.1]:')
-        # except: continue
-        # print type(IP)
-        # sys.exit(0)
-        if IP == None or IP == '':
-            IP = '192.168.45.1'
-        if not validate_ip(IP): continue
-        break
+        return True
 
-    netmask = '255.255.255.0'
+    def _write_hostapd_config(self):
+        with open(self.hostapd_config_path, 'w') as run_conf_file:
+            run_conf_file.write(config.format(self.ssid, self.password, self.wlan))
 
-    # CONFIGURE SSID, PASSWORD, ETC.
-    SSID = input('Enter SSID [joe_ssid]:')
-    if SSID == '':
-        SSID = 'joe_ssid'
+    def save_config(self):
+        if self.hotspotd_config_path is None:
+            return False
 
-    password = input('Enter password [1234567890]:')
-    if password == '':
-        password = '1234567890'
+        with open(self.hotspotd_config_path, 'w') as hotspotd_config_file:
+            json.dump({'wlan': self.wlan, 'inet': self.inet, 'ip': self.ip, 'netmask': self.netmask,
+                       'password': self.password, 'ssid': self.ssid}, hotspotd_config_file)
+        return True
 
-    with open(run_conf, 'w') as run_conf_file:
-        run_conf_file.write(config.format(SSID, password, wlan))
-
-    print('created hostapd configuration: {}'.format(run_conf))
-
-    dc = {'wlan': wlan, 'inet': ppp, 'ip': IP, 'netmask': netmask, 'SSID': SSID, 'password': password}
-    with open(hotspotd_config, 'w') as hotspotd_config_file:
-        json.dump(dc, hotspotd_config_file)
-
-    print(dc)
-    print('Configuration saved. Run "hotspotd start" to start the router.')
-
-    # CHECK WIFI DRIVERS AND ISSUE WARNINGS
-
-    return True
-
-
-def check_dependencies():
-    check = True
-
-    if shutil.which('hostapd') is None:
-        print('hostapd executable not found. Make sure you have installed hostapd.')
-        check = False
-
-    if shutil.which('dnsmasq') is None:
-        print('dnsmasq executable not found. Make sure you have installed dnsmasq.')
-        check = False
-
-    return check
-
-
-def check_interfaces():
-    global wlan, ppp
-    print('Verifying interfaces')
-
-    all_interfaces = netifaces.interfaces()
-
-    check = True
-
-    if wlan not in all_interfaces:
-        print(wlan + ' interface was not found. Make sure your wifi is on.')
-        check = False
-
-    if ppp is not None and ppp not in all_interfaces:
-        print(ppp + ' interface was not found. Make sure you are connected to the internet.')
-        check = False
-
-    print('done.')
-
-    return check
-
-def pre_start():
-    try:
-        # oper = platform.linux_distribution()
-        # if oper[0].lower()=='ubuntu' and oper[2].lower()=='trusty':
-        # trusty patch
-        # print 'applying hostapd workaround for ubuntu trusty.'
-        # 29-12-2014: Rather than patching individual distros, lets make it a default.
-        result = cli.execute_shell('nmcli radio wifi off')
-        if "error" in result.lower():
-            cli.execute_shell('nmcli nm wifi off')
-        cli.execute_shell('rfkill unblock wlan')
-        cli.execute_shell('sleep 1')
-        print('done.')
-    except:
-        pass
-
-
-def start_router(run_conf):
-    if not check_dependencies():
-        return
-    elif not check_interfaces():
-        return
-    pre_start()
-    s = 'ifconfig ' + wlan + ' up ' + IP + ' netmask ' + netmask
-    print('created interface: mon.' + wlan + ' on IP: ' + IP)
-    r = cli.execute_shell(s)
-    cli.writelog(r)
-    # cli.writelog('sleeping for 2 seconds.')
-    print('wait..')
-    cli.execute_shell('sleep 2')
-    i = IP.rindex('.')
-    ipparts = IP[0:i]
-
-    # stop dnsmasq if already running.
-    if cli.is_process_running('dnsmasq') > 0:
-        print('stopping dnsmasq')
-        cli.execute_shell('killall dnsmasq')
-
-    # stop hostapd if already running.
-    if cli.is_process_running('hostapd') > 0:
-        print('stopping hostapd')
-        cli.execute_shell('killall hostapd')
-
-    # enable forwarding in sysctl.
-    print('enabling forward in sysctl.')
-    r = cli.set_sysctl('net.ipv4.ip_forward', '1')
-    print(r.strip())
-
-    if ppp is not None:
-        # enable forwarding in iptables.
-        print('creating NAT using iptables: ' + wlan + '<->' + ppp)
-        cli.execute_shell('iptables -P FORWARD ACCEPT')
-
-        # add iptables rules to create the NAT.
-        cli.execute_shell('iptables --table nat --delete-chain')
-        cli.execute_shell('iptables --table nat -F')
-        r = cli.execute_shell('iptables --table nat -X')
-        if len(r.strip()) > 0:
-            print(r.strip())
-        cli.execute_shell('iptables -t nat -A POSTROUTING -o ' + ppp + ' -j MASQUERADE')
-        cli.execute_shell(
-            'iptables -A FORWARD -i ' + ppp + ' -o ' + wlan + ' -j ACCEPT -m state --state RELATED,ESTABLISHED')
-        cli.execute_shell('iptables -A FORWARD -i ' + wlan + ' -o ' + ppp + ' -j ACCEPT')
-
-    # allow traffic to/from wlan
-    cli.execute_shell('iptables -A OUTPUT --out-interface ' + wlan + ' -j ACCEPT')
-    cli.execute_shell('iptables -A INPUT --in-interface ' + wlan + ' -j ACCEPT')
-
-    # start dnsmasq
-    s = 'dnsmasq --dhcp-authoritative --interface=' + wlan + ' --dhcp-range=' + ipparts + '.20,' + ipparts + '.100,' + netmask + ',4h'
-    print('running dnsmasq')
-    print(s)
-    r = cli.execute_shell(s)
-    cli.writelog(r)
-
-    # ~ f = open(os.getcwd() + '/hostapd.tem','r')
-    # ~ lout=[]
-    # ~ for line in f.readlines():
-    # ~ lout.append(line.replace('<SSID>',SSID).replace('<PASS>',password))
-    # ~
-    # ~ f.close()
-    # ~ f = open(os.getcwd() + '/hostapd.conf','w')
-    # ~ f.writelines(lout)
-    # ~ f.close()
-
-    # writelog('created: ' + os.getcwd() + '/hostapd.conf')
-    # start hostapd
-    # s = 'hostapd -B ' + os.path.abspath('run.conf')
-    s = 'hostapd -B {}'.format(run_conf)
-    print(s)
-    cli.writelog('running hostapd')
-    # cli.writelog('sleeping for 2 seconds.')
-    cli.writelog('wait..')
-    cli.execute_shell('sleep 2')
-    r = cli.execute_shell(s)
-    cli.writelog(r)
-    print('hotspot is running.')
-    return
-
-
-def stop_router():
-    # bring down the interface
-    cli.execute_shell('ifconfig mon.' + wlan + ' down')
-
-    # stop hostapd
-    if cli.is_process_running('hostapd')>0:
-        cli.writelog('stopping hostapd')
-        cli.execute_shell('pkill hostapd')
-
-    # stop dnsmasq
-    if cli.is_process_running('dnsmasq') > 0:
-        cli.writelog('stopping dnsmasq')
-        cli.execute_shell('killall dnsmasq')
-
-    # disable forwarding in iptables.
-    cli.writelog('disabling forward rules in iptables.')
-    cli.execute_shell('iptables -P FORWARD DROP')
-
-    # delete iptables rules that were added for wlan traffic.
-    if wlan != None:
-        cli.execute_shell('iptables -D OUTPUT --out-interface ' + wlan + ' -j ACCEPT')
-        cli.execute_shell('iptables -D INPUT --in-interface ' + wlan + ' -j ACCEPT')
-    cli.execute_shell('iptables --table nat --delete-chain')
-    cli.execute_shell('iptables --table nat -F')
-    cli.execute_shell('iptables --table nat -X')
-
-    # disable forwarding in sysctl.
-    cli.writelog('disabling forward in sysctl.')
-    r = cli.set_sysctl('net.ipv4.ip_forward', '0')
-    print(r.strip())
-    # cli.execute_shell('ifconfig ' + wlan + ' down'  + IP + ' netmask ' + Netmask)
-    # cli.execute_shell('ip addr flush ' + wlan)
-    print('hotspot has stopped.')
-    return
-
-
-def main(args):
-    global wlan, ppp, IP, netmask
-    the_version = open("VERSION").read().strip()
-    print("****")
-    print("Hotspotd " + the_version)
-    print("A simple daemon to create wifi hotspot on Linux!")
-    print("****")
-    print("Copyright (c) 2014-2016")
-    print("Prahlad Yeri<prahladyeri@yahoo.com>\n")
-
-    cli.arguments = args
-
-    if len(cli.check_sysfile('hostapd')) == 0:
-        print("hostapd is not installed on your system. This package will not work without it.\n"
-              "To install hostapd, run 'sudo apt-get install hostapd'\n"
-              "or refer to http://wireless.kernel.org/en/users/Documentation/hostapd after this installation "
-              "gets over.")
-        time.sleep(2)
-    try:
-        with open(args.hotspotd) as hotspotd_file:
-            dc = json.load(hotspotd_file)
-        wlan = dc['wlan']
-        ppp = dc['inet']
-        IP = dc['ip']
-        netmask = dc['netmask']
-        SSID = dc['SSID']
-        password = dc['password']
-    except:
-        print("Error loadind {}".format(args.hotspotd))
-        if not configure(args.hotspotd, args.run_conf):
-            return
-
-    if args.command == 'configure':
-        configure(args.hotspotd, args.run_conf)
-    elif args.command == 'stop':
-        stop_router()
-    elif args.command == 'start':
-        if not os.path.exists(args.hotspotd):
-            if not configure(args.hotspotd, args.run_conf):
-                return
-
-        if (cli.is_process_running('hostapd') != 0 and cli.is_process_running('dnsmasq') != 0):
-            print('hotspot is already running.')
+    def configure(self):
+        wireless = Wireless()
+        wireless_interfaces = wireless.interfaces()
+        if not len(wireless_interfaces):
+            print('Wireless interface could not be found on your device.')
+            return False
+        elif len(wireless_interfaces) > 1:
+            while True:
+                print("Choose interface: ")
+                for i in range(0, len(wireless_interfaces)):
+                    print("{}: {}".format(str(i), wireless_interfaces[i]))
+                try:
+                    wireless_interface_number = int((input("Enter number: ")))
+                except:
+                    continue
+                if wireless_interface_number >= len(wireless_interfaces):
+                    continue
+                self.wlan = wireless_interfaces[wireless_interface_number]
+                break
         else:
-            start_router(args.run_conf)
+            self.wlan = wireless_interfaces[0]
+            print('Wlan interface found: {}'.format(self.wlan))
+
+        remaining_interfaces = netifaces.interfaces()
+        remaining_interfaces.remove(self.wlan)
+        if not len(remaining_interfaces):
+            self.inet = None
+            print('No network nic could be found on your deivce to interface with the LAN')
+        elif len(remaining_interfaces):
+            while True:
+                print("Choose interface: ")
+                for i in range(0, len(remaining_interfaces)):
+                    print("{}: {}".format(str(i), remaining_interfaces[i]))
+                print("X: Do not use forwarding")
+                try:
+                    remaining_interface_number = input("Enter number: ")
+                    if remaining_interface_number.lower() == "x":
+                        self.inet = None
+                        break
+                    remaining_interface_number = int(remaining_interface_number)
+                except:
+                    continue
+                if remaining_interface_number >= len(remaining_interfaces):
+                    continue
+                self.inet = remaining_interfaces[remaining_interface_number]
+                break
+
+        while True:
+            self.ip = input('Enter an IP address for your ap [192.168.45.1]:')
+            self.ip = '192.168.45.1' if self.ip == '' else self.ip
+
+            if not self._validate_ip(self.ip):
+                continue
+
+            break
+
+        self.netmask = '255.255.255.0'
+
+        self.ssid = input('Enter SSID [MyHotspot]:')
+        self.ssid = 'hotspot_ssid' if self.ssid == '' else self.ssid
+
+        self.password = input('Enter password [1234567890]:')
+        self.password = '1234567890' if self.password == '' else self.password
+
+        self.save_config()
+
+        print('Configuration saved. Run "hotspotd start" to start the router.')
+
+        return True
+
+    def _validate_ip(self, addr):
+        try:
+            socket.inet_aton(addr)
+            return True  # legal
+        except socket.error:
+            return False  # Not legal
+
+    def _check_dependencies(self):
+        check = True
+
+        if shutil.which('hostapd') is None:
+            print('hostapd executable not found. Make sure you have installed hostapd.')
+            check = False
+
+        if shutil.which('dnsmasq') is None:
+            print('dnsmasq executable not found. Make sure you have installed dnsmasq.')
+            check = False
+
+        return check
+
+    def _check_interfaces(self):
+        print('Verifying interfaces')
+        all_interfaces = netifaces.interfaces()
+
+        check = True
+
+        if self.wlan not in all_interfaces:
+            print('{} interface was not found. Make sure your wifi is on.'.format(self.wlan))
+            check = False
+
+        if self.inet is not None and self.inet not in all_interfaces:
+            print(' interface was not found. Make sure you are connected to the internet.'.format(self.inet))
+            check = False
+
+        print('done.')
+
+        return check
+
+    def _pre_start(self):
+        try:
+            # oper = platform.linux_distribution()
+            # if oper[0].lower()=='ubuntu' and oper[2].lower()=='trusty':
+            # trusty patch
+            # print 'applying hostapd workaround for ubuntu trusty.'
+            # 29-12-2014: Rather than patching individual distros, lets make it a default.
+            result = self.execute_shell('nmcli radio wifi off')
+            if "error" in result.lower():
+                self.execute_shell('nmcli nm wifi off')
+            self.execute_shell('rfkill unblock wlan')
+            self.execute_shell('sleep 1')
+            print('done.')
+        except:
+            pass
+
+    def _start_router(self):
+        if not self._check_interfaces():
+            return False
+
+        self._pre_start()
+        s = 'ifconfig ' + self.wlan + ' up ' + self.ip + ' netmask ' + self.netmask
+        print('created interface: mon.' + self.wlan + ' on IP: ' + self.ip)
+        r = self.execute_shell(s)
+        print(r)
+        # print('sleeping for 2 seconds.')
+        print('wait..')
+        self.execute_shell('sleep 2')
+        i = self.ip.rindex('.')
+        ipparts = self.ip[0:i]
+
+        # enable forwarding in sysctl.
+        print('enabling forward in sysctl.')
+        r = self.execute_shell('sysctl -w net.ipv4.ip_forward=1')
+        print(r.strip())
+
+        if self.inet is not None:
+            # enable forwarding in iptables.
+            print('creating NAT using iptables: {} <-> {}'.format(self.wlan, self.inet))
+            self.execute_shell('iptables -P FORWARD ACCEPT')
+
+            # add iptables rules to create the NAT.
+            self.execute_shell('iptables --table nat --delete-chain')
+            self.execute_shell('iptables --table nat -F')
+            r = self.execute_shell('iptables --table nat -X')
+            if len(r.strip()) > 0:
+                print(r.strip())
+            self.execute_shell('iptables -t nat -A POSTROUTING -o {} -j MASQUERADE'.format(self.inet))
+            self.execute_shell(
+                'iptables -A FORWARD -i {} -o {} -j ACCEPT -m state --state RELATED,ESTABLISHED'
+                    .format(self.inet, self.wlan))
+            self.execute_shell('iptables -A FORWARD -i {} -o {} -j ACCEPT'.format(self.wlan, self.inet))
+
+        # allow traffic to/from wlan
+        self.execute_shell('iptables -A OUTPUT --out-interface {} -j ACCEPT'.format(self.wlan))
+        self.execute_shell('iptables -A INPUT --in-interface {} -j ACCEPT'.format(self.wlan))
+
+        # start dnsmasq
+        s = 'dnsmasq --dhcp-authoritative --interface={} --dhcp-range={}.20,{}.100,{},4h'\
+            .format(self.wlan, ipparts, ipparts, self.netmask)
+
+        print('running dnsmasq')
+        print(s)
+        r = self.execute_shell(s)
+        print(r)
+
+        # ~ f = open(os.getcwd() + '/hostapd.tem','r')
+        # ~ lout=[]
+        # ~ for line in f.readlines():
+        # ~ lout.append(line.replace('<SSID>',SSID).replace('<PASS>',password))
+        # ~
+        # ~ f.close()
+        # ~ f = open(os.getcwd() + '/hostapd.conf','w')
+        # ~ f.writelines(lout)
+        # ~ f.close()
+
+        # writelog('created: ' + os.getcwd() + '/hostapd.conf')
+        # start hostapd
+        # s = 'hostapd -B ' + os.path.abspath('run.conf')
+        s = 'hostapd -B {}'.format(self.hostapd_config_path)
+        print(s)
+        print('running hostapd')
+        # print('sleeping for 2 seconds.')
+        print('wait..')
+        self.execute_shell('sleep 2')
+        r = self.execute_shell(s)
+        print(r)
+        print('hotspot is running.')
+        return True
+
+    def _stop_router(self):
+        if not self.is_running():
+            return True
+
+        # bring down the interface
+        self.execute_shell('ifconfig mon.' + self.wlan + ' down')
+
+        # stop hostapd
+        print('stopping hostapd')
+        self.execute_shell('pkill hostapd')
+
+        # stop dnsmasq
+        print('stopping dnsmasq')
+        self.execute_shell('killall dnsmasq')
+
+        # disable forwarding in iptables.
+        print('disabling forward rules in iptables.')
+        self.execute_shell('iptables -P FORWARD DROP')
+
+        # delete iptables rules that were added for wlan traffic.
+        if self.wlan != None:
+            self.execute_shell('iptables -D OUTPUT --out-interface {} -j ACCEPT'.format(self.wlan))
+            self.execute_shell('iptables -D INPUT --in-interface {} -j ACCEPT'.format(self.wlan))
+        self.execute_shell('iptables --table nat --delete-chain')
+        self.execute_shell('iptables --table nat -F')
+        self.execute_shell('iptables --table nat -X')
+
+        # disable forwarding in sysctl.
+        print('disabling forward in sysctl.')
+        r = self.execute_shell('sysctl -w net.ipv4.ip_forward=0')
+        print(r.strip())
+        # self.execute_shell('ifconfig ' + wlan + ' down'  + IP + ' netmask ' + Netmask)
+        # self.execute_shell('ip addr flush ' + wlan)
+        print('hotspot has stopped.')
+        return True
+
+    def _print_header(self):
+        the_version = open("VERSION").read().strip()
+        print("****")
+        print("Hotspotd " + the_version)
+        print("A simple daemon to create wifi hotspot on Linux!")
+        print("****")
+        print("Copyright (c) 2014-2016")
+        print("Prahlad Yeri<prahladyeri@yahoo.com>\n")
+
+    def is_running(self):
+        proceses = [proc.name() for proc in psutil.process_iter()]
+        return 'hostapd' in proceses or 'dnsmasq' in proceses
+
+    def stop(self):
+        return self._stop_router()
+
+    def start(self):
+        self._print_header()
+
+        if not self._check_dependencies():
+            return False
+
+        if self.is_running():
+            return False
+
+        if self.hotspotd_config_path is not None and os.path.exists(self.hotspotd_config_path):
+            if not self._load_hotspotd_config():
+                return False
+        else:
+            if self.wlan is None or self.ip is None or self.netmask is None or self.ssid is None \
+                    or self.password is None:
+                return False
+
+        self._write_hostapd_config()
+
+        return self._start_router()
+
+    def execute_shell(self, command_string):
+        p = subprocess.Popen(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p.wait()
+        result = p.communicate()
+
+        return result[0].decode()

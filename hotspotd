@@ -1,38 +1,49 @@
-#!/usr/bin/env python
-# @author: Prahlad Yeri
-# @description: Small daemon to create a wifi hotspot on linux
-# @license: MIT
-# python -m hotspotd $*
 from __future__ import print_function
 from __future__ import absolute_import
-
-try:
-    import hotspotd.main as mainmod
-except ImportError:
-    from . import main as mainmod
 import sys
 import os
 import argparse
+from main import Hotspotd
 
-if __name__ == "__main__":
+
+def main():
     if os.geteuid() != 0:
-        print("You need root permissions to do this, sloth!")
-        sys.exit(1)
+        print("Need root rights.")
+        return 1
+
+    config_path = "/etc/hotspotd/hotspotd.json"
 
     parser = argparse.ArgumentParser(description='A small daemon to create a wifi hotspot on linux')
-    parser.add_argument('-v', '--verbose', required=False, action='store_true')
     parser.add_argument('command', choices=['start', 'stop', 'configure'])
-    parser.add_argument('-hc', "--hotspotd", required=False, default='/etc/hotspotd/hotspotd.json')
-    parser.add_argument('-rc', "--run_conf", required=False, default='/etc/hotspotd/run.conf')
+    parser.add_argument('-v', '--verbose', required=False, action='store_true')
+    parser.add_argument('-c', "--config", required=False, action='store_true')
+    parser.add_argument('-w', "--wlan", required=False, default='wlan0')
+    parser.add_argument('-i', "--inet", required=False, default=None)
+    parser.add_argument('-ip', required=False, default='192.168.45.1')
+    parser.add_argument('-n', "--netmask", required=False, default='255.255.255.0')
+    parser.add_argument('-s', "--ssid", required=False, default='MyHotspot')
+    parser.add_argument('-p', "--password", required=False, default='1234567890')
+    parser.add_argument('-sc', "--save_config", required=False, action='store_true')
     args = parser.parse_args()
 
-    hotspot_directory = os.path.dirname(args.hotspotd)
-    if not os.path.exists(hotspot_directory):
-        os.makedirs(hotspot_directory)
+    if not args.config:
+        config_path = None
 
-    run_conf_derectory = os.path.dirname(args.run_conf)
-    if not os.path.exists(run_conf_derectory):
-        os.makedirs(run_conf_derectory)
+    hotspotd = Hotspotd(config_path, args.wlan, args.inet, args.ip, args.netmask, args.ssid, args.password)
 
-    # hotspotd.main.main(args)
-    mainmod.main(args)
+    if args.save_config:
+        hotspotd.save_config()
+
+    if args.command == 'configure':
+        if not args.config:
+            print("Please use --config")
+            return 1
+
+        hotspotd.configure()
+    elif args.command == 'stop':
+        hotspotd.stop()
+    elif args.command == 'start':
+        hotspotd.start()
+
+if __name__ == "__main__":
+    sys.exit(main())
