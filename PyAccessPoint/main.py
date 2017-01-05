@@ -1,7 +1,7 @@
 import sys
 import os
 import argparse
-from pyaccesspoint import AccessPoint
+from .pyaccesspoint import AccessPoint
 
 
 def main():
