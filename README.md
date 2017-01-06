@@ -1,80 +1,90 @@
-#Fork
-Some experiments to get this code python3 compatible.
+# Introduction
+*PyAccessPoint* is a package to create a wifi access point on linux. It depends on *hostapd* for AP provisioning and *dnsmasq* to assign IP addresses to devices.
 
-#Introduction
-*Hotspotd* is a small daemon to create a wifi hotspot on linux. It depends on *hostapd* for AP provisioning and *dnsmasq* to assign IP addresses to devices.
+# Dependencies
+So, there 2 types of dependencies:
+* system dependencies
+    * dnsmasq
+    * hostapd
+    * python3
+* python dependencies
+    * wireless
+    * netifaces
+    * psutil
 
-Hotspotd works by creating a virtual NAT (Network address transation) table between your connected device and the internet using linux *iptables*.
-
-#Installation
-To install hotspotd, just follow these steps:
+You can not install python dependencies manually, they will be installed while installing the package.
+If you want to do it manually, just type (or copy, it's better way :D)
 ```
-wget https://github.com/prahladyeri/hotspotd/raw/master/dist/hotspotd-latest.tar.gz
-tar xvf hotspotd-latest.tar.gz
-cd hotspotd-latest/
-sudo python setup.py install
+sudo apt install python3-dev python3-pip && sudo pip3 install wireless netifaces psutil
 ```
 
-To uninstall hotspotd, just say:
+# Installation
+1. Install system dependencies
+    ```
+    sudo apt update && sudo apt --yes --force-yes install dnsmasq hostapd python3-dev unzip python3-pip
+    ```
 
-```sudo python setup.py uninstall```
+2. Download latest package
+    ```
+    cd ~ && wget --output-document=pyaccesspoint-master.zip https://github.com/Goblenus/pyaccesspoint/archive/master.zip
+    ```
 
-#Dependencies
- * *dnsmasq* (typically pre-installed on most linux distributions)
- * *hostapd* for AP provisioning
+3. Unpack downloaded package
+    ```
+    unzip pyaccesspoint-master.zip && cd pyaccesspoint-master
+    ```
 
-To install hostapd on ubuntu:
+4. Install it
+    ```
+    sudo python3 setup.py install
+    ```
 
-```apt-get install hostapd dnsmasq```
+5. Remove files
+    ```
+    cd ~ && sudo rm -rf pyaccesspoint-master.zip pyaccesspoint-master
+    ```
 
-Or on RHEL based distros:
+That all. Now you can use PyAccessPoint.
 
-```yum install hostapd dnsmasq```
+One line install:
+```
+sudo apt update && sudo apt --yes --force-yes install dnsmasq hostapd python3-dev unzip python3-pip && cd ~ && wget --output-document=pyaccesspoint-master.zip https://github.com/Goblenus/pyaccesspoint/archive/master.zip && unzip pyaccesspoint-master.zip && cd pyaccesspoint-master && sudo python3 setup.py install && cd ~ && sudo rm -rf pyaccesspoint-master.zip pyaccesspoint-master
+```
 
-#Usage
+# Usage
+You can use it as standalone command line utility:
+To start
+```
+sudo pyaccesspoint start
+```
 
-To start hotspot:
+It will create hotspot named "MyAccessPoint" on wlan0 with "1234567890" password.
+All arguments you may obtain by typing:
+```
+pyaccesspoint --help
+```
 
-```sudo hotspotd start```
+To stop
+```
+sudo pyaccesspoint stop
+```
 
-To stop hotspot:
+You can configure and save config file. This will save you time at the next start
+```
+sudo pyaccesspoint -config configure
+```
+You config file file will be placed at /etc/accesspoint/accesspoint.json.
+To start it with config file just type:
+```
+sudo pyaccesspoint -config start
+```
 
-```sudo hotspotd stop```
+# Tested
+* OrangePi Plus with Armbian 5.23
 
-The first time you run hotspotd, it will ask you for configuration values for SSID, password, etc. Alternatively, you may also run:
+# Note
+This project is python3 compatible only, python2 is not tested at all.
 
-```sudo hotspotd configure```
-
-#Troubleshooting
-
-* Make sure all dependencies (hostapd, dnsmasq and python 2.7) are installed.
-	
-* hotspotd creates the NAT by manipulating iptables rules. So if you have any other firewall software that manipulates the iptables rules (such as the firewalld on fedora), make sure you disable that.
-	
-
-* To create a hotspot, your wifi must support AP mode. To find that out, use this process:
-
-	* Find your kernel driver module in use by issuing the below command:
-
-		```lspci -k | grep -A 3 -i network```
-
-		(example module: ath9k)
-
-	* Now, use the below command to find out your wifi capabilities (replace ath9k by your kernel driver):
-
-		```modinfo ath9k | grep depend```
-
-	* If the above output includes “mac80211” then it means your wifi card will support the AP mode.	
-
-#Testing status
-This package has been tested on Qualcomm Atheros adapter on the following distros:
-
-* Ubuntu 12.04 LTS
-* Ubuntu 14.04 LTS
-
-In theory, it should work with all other distros too (on machines having wifi adapters supported by hostapd), but you will have to try that out and tell me!
-
-#Notes
-* Replace `sudo` with `su` or `su -c` if you manage superuser access in that manner.
-* PyPI home page could be found at https://pypi.python.org/pypi/hotspotd.
-* I need someone to test this daemon across various linux distros. If you are interested in testing of open-source apps, please contact me.
+# Idea
+This project is fork of https://github.com/prahladyeri/hotspotd.
+Author: Prahlad Yeri (prahladyeri@yahoo.com)

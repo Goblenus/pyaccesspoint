@@ -9,23 +9,14 @@ s = setup(
         'netifaces',
         'psutil'
     ],
-
     name='PyAccessPoint',
     version=the_version,
-    # description='Small daemon to create a wifi hotspot on linux',
-    # license='MIT',
-    # author='Prahlad Yeri',
-    # author_email='prahladyeri@yahoo.com',
-    # url='https://github.com/prahladyeri/hotspotd',
-    # py_modules=['hotspotd','cli'],
-
+    description='Package to manage wifi hotspot on linux',
+    license='GNU GPLv3',
+    author='Anton Bautkin',
+    author_email='antonbautkin@gmail.com',
+    url='https://github.com/Goblenus/pyaccesspoint',
     packages=['PyAccessPoint'],
-
-    # out of date
-    # package_data={'hotspotd': ['run.dat']},
-
-    # scripts=['PyAccessPointmain.py', 'pyaccesspoint.py'],
-
     entry_points={
         'console_scripts': [
             'pyaccesspoint = PyAccessPoint.main:main',
