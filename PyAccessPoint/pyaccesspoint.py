@@ -339,15 +339,6 @@ class AccessPoint:
         print('hotspot has stopped.')
         return True
 
-    def _print_header(self):
-        the_version = open("VERSION").read().strip()
-        print("****")
-        print("access_point " + the_version)
-        print("A simple daemon to create wifi hotspot on Linux!")
-        print("****")
-        print("Copyright (c) 2014-2016")
-        print("Prahlad Yeri<prahladyeri@yahoo.com>\n")
-
     def is_running(self):
         proceses = [proc.name() for proc in psutil.process_iter()]
         return 'hostapd' in proceses or 'dnsmasq' in proceses
@@ -356,8 +347,6 @@ class AccessPoint:
         return self._stop_router()
 
     def start(self):
-        self._print_header()
-
         if not self._check_dependencies():
             return False
 
