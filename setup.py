@@ -1,8 +1,5 @@
 from setuptools import setup
 
-the_version = open("VERSION").read().strip()
-print("Packaging the version " + the_version)
-
 s = setup(
     install_requires=[
         'wireless',
@@ -10,7 +7,7 @@ s = setup(
         'psutil'
     ],
     name='PyAccessPoint',
-    version=the_version,
+    version='0.0.2',
     description='Package to manage wifi hotspot on linux',
     license='GNU GPLv3',
     author='Anton Bautkin',
