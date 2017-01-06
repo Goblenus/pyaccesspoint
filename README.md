@@ -44,7 +44,7 @@ sudo apt install python3-dev python3-pip && sudo pip3 install wireless netifaces
     cd ~ && sudo rm -rf pyaccesspoint-master.zip pyaccesspoint-master
     ```
 
-That all. Now you can use PyAccessPoint.
+That is all. Now you can use PyAccessPoint.
 
 One line install:
 ```
@@ -86,5 +86,4 @@ sudo pyaccesspoint -config start
 This project is python3 compatible only, python2 is not tested at all.
 
 # Idea
-This project is fork of https://github.com/prahladyeri/hotspotd.
-Author: Prahlad Yeri (prahladyeri@yahoo.com)
+This project is fork of https://github.com/prahladyeri/hotspotd (Prahlad Yeri - prahladyeri@yahoo.com)
