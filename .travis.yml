@@ -3,7 +3,7 @@ python: "3.5"
 
 install: "pip install pypandoc"
 
-script: "echo 1"
+script: "python3 readme_convert.py"
 
 deploy:
   provider: pypi
