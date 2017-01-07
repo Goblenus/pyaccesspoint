@@ -1,14 +1,4 @@
 from setuptools import setup
-import os
-
-if os.path.exists('README.md'):
-    try:
-        import pypandoc
-        long_description = pypandoc.convert('README.md', 'rst')
-    except(IOError, ImportError):
-        long_description = open('README.md').read()
-else:
-    long_description = ''
 
 s = setup(
     install_requires=[
@@ -17,9 +7,8 @@ s = setup(
         'psutil'
     ],
     name='PyAccessPoint',
-    version='0.0.9',
+    version='0.0.10',
     description='Package to manage wifi hotspot on linux',
-    long_description=long_description,
     license='GNU GPLv3',
     author='Anton Bautkin',
     author_email='antonbautkin@gmail.com',
