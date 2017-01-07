@@ -17,7 +17,7 @@ s = setup(
         'psutil'
     ],
     name='PyAccessPoint',
-    version='0.0.6',
+    version='0.0.7',
     description='Package to manage wifi hotspot on linux',
     long_description=long_description,
     license='GNU GPLv3',
