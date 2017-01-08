@@ -1,9 +1,7 @@
 language: python
 python: "3.5"
 
-install: "pip install pypandoc"
-
-script: "python3 readme_convert.py"
+script: "echo 1"
 
 deploy:
   provider: pypi
