@@ -10,6 +10,8 @@ import netifaces
 import shutil
 import psutil
 import subprocess
+import logging
+import traceback
 
 config = '''
 #sets the wifi interface to use, is wlan0 in most cases
@@ -87,22 +89,30 @@ class AccessPoint:
             self.netmask = dc['netmask']
             self.ssid = dc['ssid']
             self.password = dc['password']
-        except:
+        except Exception as exception:
+            logging.error("Load config error\n%s", str(traceback.print_exc()))
             return False
 
+        logging.debug("Config loaded successfully")
         return True
 
     def _write_hostapd_config(self):
         with open(self.hostapd_config_path, 'w') as hostapd_config_file:
             hostapd_config_file.write(config.format(self.ssid, self.password, self.wlan))
 
+        logging.debug("Hostapd config saved to %s", self.hostapd_config_path)
+
     def save_config(self):
         if self.access_point_config_path is None:
+            logging.error("Can't save config file, due to no path")
             return False
 
         with open(self.access_point_config_path, 'w') as access_point_config_file:
             json.dump({'wlan': self.wlan, 'inet': self.inet, 'ip': self.ip, 'netmask': self.netmask,
                        'password': self.password, 'ssid': self.ssid}, access_point_config_file)
+
+        logging.debug("Config saved in: %s", self.access_point_config_path)
+
         return True
 
     def configure(self):
@@ -180,36 +190,37 @@ class AccessPoint:
             socket.inet_aton(addr)
             return True  # legal
         except socket.error:
+            logging.error("Wrong ip %s", str(addr))
             return False  # Not legal
 
     def _check_dependencies(self):
         check = True
 
         if shutil.which('hostapd') is None:
-            print('hostapd executable not found. Make sure you have installed hostapd.')
+            logging.error('hostapd executable not found. Make sure you have installed hostapd.')
             check = False
 
         if shutil.which('dnsmasq') is None:
-            print('dnsmasq executable not found. Make sure you have installed dnsmasq.')
+            logging.error('dnsmasq executable not found. Make sure you have installed dnsmasq.')
             check = False
 
         return check
 
     def _check_interfaces(self):
-        print('Verifying interfaces')
+        logging.debug('Verifying interfaces')
         all_interfaces = netifaces.interfaces()
 
         check = True
 
         if self.wlan not in all_interfaces:
-            print('{} interface was not found. Make sure your wifi is on.'.format(self.wlan))
+            logging.error('{} interface was not found. Make sure your wifi is on.'.format(self.wlan))
             check = False
 
         if self.inet is not None and self.inet not in all_interfaces:
-            print(' interface was not found. Make sure you are connected to the internet.'.format(self.inet))
+            logging.error('{} interface was not found. Make sure you are connected to the internet.'.format(self.inet))
             check = False
 
-        print('done.')
+        logging.debug('done.')
 
         return check
 
@@ -225,7 +236,6 @@ class AccessPoint:
                 self.execute_shell('nmcli nm wifi off')
             self.execute_shell('rfkill unblock wlan')
             self.execute_shell('sleep 1')
-            print('done.')
         except:
             pass
 
@@ -235,23 +245,23 @@ class AccessPoint:
 
         self._pre_start()
         s = 'ifconfig ' + self.wlan + ' up ' + self.ip + ' netmask ' + self.netmask
-        print('created interface: mon.' + self.wlan + ' on IP: ' + self.ip)
+        logging.debug('created interface: mon.' + self.wlan + ' on IP: ' + self.ip)
         r = self.execute_shell(s)
-        print(r)
+        logging.debug(r)
         # print('sleeping for 2 seconds.')
-        print('wait..')
+        logging.debug('wait..')
         self.execute_shell('sleep 2')
         i = self.ip.rindex('.')
         ipparts = self.ip[0:i]
 
         # enable forwarding in sysctl.
-        print('enabling forward in sysctl.')
+        logging.debug('enabling forward in sysctl.')
         r = self.execute_shell('sysctl -w net.ipv4.ip_forward=1')
-        print(r.strip())
+        logging.debug(r.strip())
 
         if self.inet is not None:
             # enable forwarding in iptables.
-            print('creating NAT using iptables: {} <-> {}'.format(self.wlan, self.inet))
+            logging.debug('creating NAT using iptables: {} <-> {}'.format(self.wlan, self.inet))
             self.execute_shell('iptables -P FORWARD ACCEPT')
 
             # add iptables rules to create the NAT.
@@ -259,7 +269,7 @@ class AccessPoint:
             self.execute_shell('iptables --table nat -F')
             r = self.execute_shell('iptables --table nat -X')
             if len(r.strip()) > 0:
-                print(r.strip())
+                logging.debug(r.strip())
             self.execute_shell('iptables -t nat -A POSTROUTING -o {} -j MASQUERADE'.format(self.inet))
             self.execute_shell(
                 'iptables -A FORWARD -i {} -o {} -j ACCEPT -m state --state RELATED,ESTABLISHED'
@@ -274,10 +284,10 @@ class AccessPoint:
         s = 'dnsmasq --dhcp-authoritative --interface={} --dhcp-range={}.20,{}.100,{},4h'\
             .format(self.wlan, ipparts, ipparts, self.netmask)
 
-        print('running dnsmasq')
-        print(s)
+        logging.debug('running dnsmasq')
+        logging.debug(s)
         r = self.execute_shell(s)
-        print(r)
+        logging.debug(r)
 
         # ~ f = open(os.getcwd() + '/hostapd.tem','r')
         # ~ lout=[]
@@ -293,33 +303,34 @@ class AccessPoint:
         # start hostapd
         # s = 'hostapd -B ' + os.path.abspath('run.conf')
         s = 'hostapd -B {}'.format(self.hostapd_config_path)
-        print(s)
-        print('running hostapd')
+        logging.debug(s)
+        logging.debug('running hostapd')
         # print('sleeping for 2 seconds.')
-        print('wait..')
+        logging.debug('wait..')
         self.execute_shell('sleep 2')
         r = self.execute_shell(s)
-        print(r)
-        print('hotspot is running.')
+        logging.debug(r)
+        logging.debug('hotspot is running.')
         return True
 
     def _stop_router(self):
         if not self.is_running():
+            logging.debug("Already started")
             return True
 
         # bring down the interface
         self.execute_shell('ifconfig mon.' + self.wlan + ' down')
 
         # stop hostapd
-        print('stopping hostapd')
+        logging.debug('stopping hostapd')
         self.execute_shell('pkill hostapd')
 
         # stop dnsmasq
-        print('stopping dnsmasq')
+        logging.debug('stopping dnsmasq')
         self.execute_shell('killall dnsmasq')
 
         # disable forwarding in iptables.
-        print('disabling forward rules in iptables.')
+        logging.debug('disabling forward rules in iptables.')
         self.execute_shell('iptables -P FORWARD DROP')
 
         # delete iptables rules that were added for wlan traffic.
@@ -331,12 +342,12 @@ class AccessPoint:
         self.execute_shell('iptables --table nat -X')
 
         # disable forwarding in sysctl.
-        print('disabling forward in sysctl.')
+        logging.debug('disabling forward in sysctl.')
         r = self.execute_shell('sysctl -w net.ipv4.ip_forward=0')
-        print(r.strip())
+        logging.debug(r.strip())
         # self.execute_shell('ifconfig ' + wlan + ' down'  + IP + ' netmask ' + Netmask)
         # self.execute_shell('ip addr flush ' + wlan)
-        print('hotspot has stopped.')
+        logging.debug('hotspot has stopped.')
         return True
 
     def is_running(self):
@@ -351,7 +362,8 @@ class AccessPoint:
             return False
 
         if self.is_running():
-            return False
+            logging.debug("Already running")
+            return True
 
         if self.access_point_config_path is not None and os.path.exists(self.access_point_config_path):
             if not self._load_access_point_config():

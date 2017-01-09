@@ -2,6 +2,7 @@ import sys
 import os
 import argparse
 from .pyaccesspoint import AccessPoint
+import logging
 
 
 def main():
@@ -27,8 +28,11 @@ def main():
     args = parser.parse_args()
 
     if os.geteuid() != 0:
-        print("Need root rights.")
+        logging.warning("Need root rights.")
         return 1
+
+    logging.basicConfig(format="%(asctime)s ::%(levelname)s:: %(message)s",
+                        level=logging.DEBUG if args.verbose else logging.INFO)
 
     access_point = AccessPoint(args.config_path if args.config else None, args.wlan, args.inet, args.ip, args.netmask,
                                args.ssid, args.password)
@@ -38,14 +42,22 @@ def main():
 
     if args.command == 'configure':
         if not args.config:
-            print("Please use --config (and --config_path)")
-            return 1
-
-        return access_point.configure()
+            logging.error("Please use --config (and --config_path)")
+            out = 1
+        else:
+            out = access_point.configure()
     elif args.command == 'stop':
-        return access_point.stop()
+        out = access_point.stop()
+        if out:
+            logging.info("Stopped")
     elif args.command == 'start':
-        return access_point.start()
+        out = access_point.start()
+        if out:
+            logging.info("Started")
+    else:
+        out = 0
+
+    return out
 
 if __name__ == "__main__":
     sys.exit(main())
