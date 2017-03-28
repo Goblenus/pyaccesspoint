@@ -127,11 +127,8 @@ class AccessPoint:
 
     def _pre_start(self):
         try:
-            # oper = platform.linux_distribution()
-            # if oper[0].lower()=='ubuntu' and oper[2].lower()=='trusty':
-            # trusty patch
-            # print 'applying hostapd workaround for ubuntu trusty.'
-            # 29-12-2014: Rather than patching individual distros, lets make it a default.
+            self._execute_shell('killall wpa_supplicant')
+
             result = self._execute_shell('nmcli radio wifi off')
             if "error" in result.lower():
                 self._execute_shell('nmcli nm wifi off')
