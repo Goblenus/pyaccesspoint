@@ -238,6 +238,12 @@ class AccessPoint:
         logging.debug(r.strip())
         # self.execute_shell('ifconfig ' + wlan + ' down'  + IP + ' netmask ' + Netmask)
         # self.execute_shell('ip addr flush ' + wlan)
+
+        # restart wpa_supplicant
+        logging.debug('restarting wpa_supplicant')
+        r = self._execute_shell('wpa_supplicant -B -c/etc/wpa_supplicant/wpa_supplicant.conf -i wlan0')
+        logging.debug(r.strip())
+
         logging.debug('hotspot has stopped.')
         return True
 
